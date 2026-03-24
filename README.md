@@ -1,0 +1,144 @@
+# exchange-honeynet
+
+A Kubernetes-first, open-source deception lab for **exchange / market-data simulation**.
+
+This repository scaffolds a lab that combines:
+
+- **exchange simulator**: REST + WebSocket + FIX mock
+- **Kafka on Kubernetes** via **Strimzi**
+- **Suricata** for north-south / east-west traffic inspection
+- **OpenSearch + OpenSearch Dashboards** for storage and analysis
+- **Cilium** network policy examples for segmentation
+- **optional Wazuh agent integration** for endpoint / workload telemetry forwarding to an external Wazuh plane
+
+> Scope: this repo is a practical starter, not a production trading engine.
+> It is intended for deception engineering, telemetry collection, SOC workflows, and research labs.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Attacker / Research Client] -->|HTTP/WebSocket/FIX| GW[Exchange Simulator]
+    GW -->|audit + market events| K[(Kafka)]
+    S[Suricata DS] -->|EVE JSON| EF[EVE Forwarder]
+    EF --> K
+    K --> IW[Indexer Worker]
+    IW --> OS[(OpenSearch)]
+    OS --> OSD[OpenSearch Dashboards]
+    AG[Optional Wazuh Agent DS] --> WM[External Wazuh Manager]
+    CIL[Cilium Policies + Hubble] -. segmentation / flow visibility .- GW
+    CIL -. segmentation / flow visibility .- K
+    CIL -. segmentation / flow visibility .- S
+```
+
+## Repository layout
+
+```text
+apps/
+  exchange-simulator/    FastAPI + WebSocket + FIX mock server
+  eve-forwarder/         tails Suricata eve.json and publishes to Kafka
+  indexer-worker/        consumes Kafka topics and bulk-indexes into OpenSearch
+k8s/base/
+  namespaces/            namespaces
+  kafka/                 Strimzi Kafka CRs, topics, users
+  exchange-simulator/    deployment + service
+  suricata/              daemonset + rules + sidecar
+  opensearch/            single-node dev deployment + dashboards
+  network-policies/      Cilium policy examples
+integrations/
+  wazuh-agent/           optional DaemonSet for external Wazuh manager
+scripts/
+  bootstrap-kind.sh      local dev cluster bootstrap notes
+  deploy.sh              apply manifests in a sensible order
+```
+
+## Quick start
+
+### 1. Prerequisites
+
+- Kubernetes cluster (kind / k3d / bare-metal / managed)
+- Cilium installed as the CNI
+- Strimzi operator installed
+- `kubectl`, `docker`, and optionally `kind`
+
+### 2. Build app images
+
+```bash
+export REGISTRY=ghcr.io/YOUR_ORG
+export TAG=dev
+
+docker build -t $REGISTRY/exchange-simulator:$TAG apps/exchange-simulator
+docker build -t $REGISTRY/eve-forwarder:$TAG apps/eve-forwarder
+docker build -t $REGISTRY/indexer-worker:$TAG apps/indexer-worker
+
+docker push $REGISTRY/exchange-simulator:$TAG
+docker push $REGISTRY/eve-forwarder:$TAG
+docker push $REGISTRY/indexer-worker:$TAG
+```
+
+### 3. Patch image references
+
+Search/replace these placeholders in the manifests:
+
+- `ghcr.io/example/exchange-simulator:dev`
+- `ghcr.io/example/eve-forwarder:dev`
+- `ghcr.io/example/indexer-worker:dev`
+
+### 4. Deploy
+
+```bash
+bash scripts/deploy.sh
+```
+
+### 5. Seed test traffic
+
+```bash
+kubectl -n exchange-sim port-forward svc/exchange-simulator 8080:8080
+curl -X POST http://127.0.0.1:8080/api/v1/orders \
+  -H 'content-type: application/json' \
+  -d '{"symbol":"BTC-USD","side":"buy","price":62500.5,"quantity":0.2,"account_id":"ACCT-ALPHA"}'
+```
+
+### 6. WebSocket stream
+
+```bash
+wscat -c ws://127.0.0.1:8080/ws/market?symbol=BTC-USD
+```
+
+### 7. FIX mock
+
+```bash
+nc 127.0.0.1 9878
+```
+
+Then send a simple line-delimited pseudo-FIX message using `|` as a visual separator; the server normalizes it to SOH internally:
+
+```text
+8=FIX.4.4|35=A|49=CLIENT01|56=SIMEX|34=1|52=20260324-09:30:00.000|98=0|108=30|
+```
+
+## Threat emulation ideas
+
+- unauthenticated market data scraping
+- abusive symbol enumeration
+- malformed REST payloads
+- abnormal WebSocket connection churn
+- FIX logon storms / malformed messages / replay attempts
+- order placement floods from a single account / IP
+
+## Wazuh note
+
+This repo treats **Wazuh as an optional external security plane**. A full Wazuh central deployment already includes a **Wazuh server, Wazuh indexer, and Wazuh dashboard**; if you also run OpenSearch for this lab, co-locating both full stacks in one tiny cluster adds unnecessary overlap. Use the provided Wazuh agent DaemonSet to forward host/workload telemetry to an external Wazuh manager.
+
+## Hardening path
+
+- replace single-node OpenSearch with a proper multi-node topology
+- use Gateway API instead of legacy Ingress where needed
+- pin TLS for Kafka, OpenSearch, Dashboards, and simulator ingress
+- add HPA / PDB / anti-affinity
+- push Suricata rules and app detections into a CI rule-test pipeline
+- add egress-deny by default and explicit allowlists with Cilium policies
+
+## License
+
+MIT

@@ -1,0 +1,65 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: exchange-simulator-default-deny
+  namespace: exchange-sim
+spec:
+  endpointSelector:
+    matchLabels:
+      app: exchange-simulator
+  ingressDeny:
+    - fromEntities:
+        - all
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": telemetry
+      toPorts:
+        - ports:
+            - port: '9092'
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-simulator-http-fix
+  namespace: exchange-sim
+spec:
+  endpointSelector:
+    matchLabels:
+      app: exchange-simulator
+  ingress:
+    - fromEntities:
+        - cluster
+        - world
+      toPorts:
+        - ports:
+            - port: '8080'
+              protocol: TCP
+            - port: '9878'
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: telemetry-open-search
+  namespace: telemetry
+spec:
+  endpointSelector:
+    matchLabels:
+      app: opensearch
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: indexer-worker
+      toPorts:
+        - ports:
+            - port: '9200'
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            app: opensearch-dashboards
+      toPorts:
+        - ports:
+            - port: '9200'
+              protocol: TCP
