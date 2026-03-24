@@ -3,10 +3,10 @@ SHELL := /bin/bash
 OVERLAY ?= k8s/overlays/kind
 PYTEST_VENV := .venv-test
 
-.PHONY: help test lint build kind-up deploy smoke pre-commit yaml-lint clean
+.PHONY: help test lint build kind-up deploy smoke hubble-check pre-commit yaml-lint clean
 
 help:
-	@echo "Targets: test lint build kind-up deploy smoke pre-commit yaml-lint clean"
+	@echo "Targets: test lint build kind-up deploy smoke hubble-check pre-commit yaml-lint clean"
 
 test:
 	python3 -m venv $(PYTEST_VENV)
@@ -28,6 +28,9 @@ deploy:
 
 smoke:
 	OVERLAY=$(OVERLAY) bash scripts/smoke.sh
+
+hubble-check:
+	bash scripts/hubble-check.sh
 
 yaml-lint:
 	docker run --rm -v "$$(pwd):/work" cytopia/yamllint:latest -f parsable \

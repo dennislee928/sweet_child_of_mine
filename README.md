@@ -270,6 +270,22 @@ Current baseline applied in manifests:
   - `seccompProfile: RuntimeDefault`
   - writable `/tmp` via `emptyDir`
 
+## Phase 2 operations baseline
+
+This repo now includes the Phase 2 operational baseline:
+
+- Hubble flow debugging runbook: [`docs/flow-debug.md`](docs/flow-debug.md)
+- Quick flow command helper: [`scripts/hubble-check.sh`](scripts/hubble-check.sh)
+- Make target: `make hubble-check`
+- Dependabot automation: [`.github/dependabot.yml`](.github/dependabot.yml)
+
+Recommended sequence:
+
+```bash
+make smoke OVERLAY=k8s/overlays/kind
+make hubble-check
+```
+
 ## License
 
 MIT
