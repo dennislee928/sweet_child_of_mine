@@ -3,10 +3,10 @@ SHELL := /bin/bash
 OVERLAY ?= k8s/overlays/kind
 PYTEST_VENV := .venv-test
 
-.PHONY: help test lint build kind-up deploy smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean
+.PHONY: help test lint build kind-up deploy smoke tenant-create tenant-apply tenant-smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean
 
 help:
-	@echo "Targets: test lint build kind-up deploy smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean"
+	@echo "Targets: test lint build kind-up deploy smoke tenant-create tenant-apply tenant-smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean"
 
 test:
 	python3 -m venv $(PYTEST_VENV)
@@ -59,3 +59,15 @@ pre-commit:
 
 clean:
 	rm -rf $(PYTEST_VENV)
+
+
+TENANT ?= alpha
+
+tenant-create:
+	TENANT=$(TENANT) TENANT_ENV=$(TENANT_ENV) SIM_IMAGE=$(SIM_IMAGE) bash scripts/tenant-create.sh
+
+tenant-apply: tenant-create
+	kubectl apply -f k8s/tenants/$(TENANT)/rendered.yaml
+
+tenant-smoke: tenant-apply
+	TENANT=$(TENANT) bash scripts/smoke.sh

@@ -321,3 +321,25 @@ bash scripts/opensearch-bootstrap.sh
 ## License
 
 MIT
+
+
+## Tenant onboarding
+
+Use one command to generate tenant rendered manifests:
+
+```bash
+make tenant-create TENANT=alpha
+kubectl apply -f k8s/tenants/alpha/rendered.yaml
+TENANT=alpha bash scripts/smoke.sh
+```
+
+See full flow in [`docs/tenant-onboarding.md`](docs/tenant-onboarding.md).
+
+Production requires digest pinning in tenant generation:
+
+```bash
+TENANT=alpha TENANT_ENV=prod SIM_IMAGE=ghcr.io/<org>/exchange-simulator@sha256:<digest> \
+  bash scripts/tenant-create.sh
+```
+
+Use [`.github/workflows/sign-images.yml`](.github/workflows/sign-images.yml) to build/scan/sign and obtain deployable signed digests.

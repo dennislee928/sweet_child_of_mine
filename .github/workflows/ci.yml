@@ -139,3 +139,50 @@ jobs:
           name: smoke-failure-diagnostics
           path: /tmp/diag
           if-no-files-found: warn
+
+  tenant-validation:
+    runs-on: ubuntu-latest
+    needs: [manifest-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+      - name: Generate tenant rendered manifest
+        run: |
+          make tenant-create TENANT=alpha
+      - name: Trivy config scan (tenant rendered)
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          scan-type: config
+          scan-ref: k8s/tenants/alpha/rendered.yaml
+          format: table
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+      - name: Setup kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: exchange-honeynet
+      - name: Deploy base and tenant rendered
+        run: |
+          kubectl apply -f k8s/tenants/alpha/rendered.yaml
+      - name: Tenant smoke and flow checks
+        env:
+          TENANT: alpha
+        run: |
+          bash scripts/smoke.sh
+          bash scripts/hubble-check.sh
+
+      - name: Collect tenant diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/tenant-diag
+          kubectl get pods -A > /tmp/tenant-diag/pods-all.txt || true
+          kubectl get events -A --sort-by=.metadata.creationTimestamp > /tmp/tenant-diag/events-all.txt || true
+          bash scripts/ci-artifact-summary.sh /tmp/tenant-diag || true
+      - name: Upload tenant diagnostics artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tenant-validation-diagnostics
+          path: /tmp/tenant-diag
+          if-no-files-found: warn

@@ -1,0 +1,304 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-alpha
+  labels:
+    tenant: alpha
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exchange-simulator-alpha-config
+  namespace: tenant-alpha
+  labels:
+    tenant: alpha
+data:
+  APP_NAME: exchange-simulator-alpha
+  KAFKA_BOOTSTRAP_SERVERS: exchange-kafka-kafka-bootstrap.telemetry.svc.cluster.local:9093
+  MARKET_EVENTS_TOPIC: tenant-alpha.market-events
+  AUDIT_TOPIC: tenant-alpha.simulator-audit
+  FIX_LISTEN_HOST: 0.0.0.0
+  FIX_LISTEN_PORT: '9878'
+  HTTP_PORT: '8080'
+  SYMBOLS: BTC-USD,ETH-USD,SOL-USD,AAPL,TSLA,NVDA
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exchange-simulator-alpha
+  namespace: tenant-alpha
+  labels:
+    app: exchange-simulator-alpha
+    tenant: alpha
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: exchange-simulator-alpha
+      tenant: alpha
+  template:
+    metadata:
+      labels:
+        app: exchange-simulator-alpha
+        tenant: alpha
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exchange-simulator
+          image: ghcr.io/example/exchange-simulator:dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: exchange-simulator-alpha-config
+          env:
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: SASL_SSL
+            - name: KAFKA_SASL_MECHANISM
+              value: SCRAM-SHA-512
+            - name: KAFKA_SASL_USERNAME
+              value: tenant-alpha-simulator-user
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tenant-alpha-simulator-user
+                  key: password
+            - name: KAFKA_SSL_CA_LOCATION
+              value: /etc/kafka/ca.crt
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: fix
+              containerPort: 9878
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: kafka-cluster-ca
+              mountPath: /etc/kafka
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: kafka-cluster-ca
+          secret:
+            secretName: exchange-kafka-cluster-ca-cert
+            optional: true
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exchange-simulator-alpha
+  namespace: tenant-alpha
+  labels:
+    tenant: alpha
+spec:
+  selector:
+    app: exchange-simulator-alpha
+    tenant: alpha
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: fix
+      port: 9878
+      targetPort: 9878
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exchange-simulator-alpha-default-deny
+  namespace: tenant-alpha
+  labels:
+    tenant: alpha
+spec:
+  podSelector:
+    matchLabels:
+      app: exchange-simulator-alpha
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9878
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: telemetry
+      ports:
+        - protocol: TCP
+          port: 9093
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: tenant-alpha.market-events
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+    tenant: alpha
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: tenant-alpha.simulator-audit
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+    tenant: alpha
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: tenant-alpha.suricata-eve
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+    tenant: alpha
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: tenant-alpha-simulator-user
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+    tenant: alpha
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: tenant-alpha.market-events
+          patternType: literal
+        operations: ["Write", "Describe"]
+      - resource:
+          type: topic
+          name: tenant-alpha.simulator-audit
+          patternType: literal
+        operations: ["Write", "Describe"]
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: tenant-alpha-eve-forwarder-user
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+    tenant: alpha
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: tenant-alpha.suricata-eve
+          patternType: literal
+        operations: ["Write", "Describe"]
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: tenant-alpha-indexer-user
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+    tenant: alpha
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: tenant-alpha.market-events
+          patternType: literal
+        operations: ["Read", "Describe"]
+      - resource:
+          type: topic
+          name: tenant-alpha.simulator-audit
+          patternType: literal
+        operations: ["Read", "Describe"]
+      - resource:
+          type: topic
+          name: tenant-alpha.suricata-eve
+          patternType: literal
+        operations: ["Read", "Describe"]
+      - resource:
+          type: group
+          name: tenant-alpha-indexer
+          patternType: literal
+        operations: ["Read", "Describe"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tenant-alpha-opensearch-governance
+  namespace: telemetry
+  labels:
+    tenant: alpha
+data:
+  INDEX_TEMPLATE_NAME: tenant-alpha-events-template
+  INDEX_ALIAS: tenant-alpha-events
+  ILM_POLICY_NAME: tenant-alpha-hot-delete-7d
+  INDEX_PATTERNS: "tenant-alpha.market-events-*,tenant-alpha.simulator-audit-*,tenant-alpha.suricata-eve-*"
