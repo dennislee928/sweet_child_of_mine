@@ -1,7 +1,7 @@
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
-  name: simulator-shell-observe
+  name: simulator-shell-enforce
 spec:
   kprobes:
     - call: "__x64_sys_execve"
@@ -14,3 +14,5 @@ spec:
           matchNamespaces:
             - operator: In
               values: ["tenant-alpha", "telemetry"]
+          matchActions:
+            - action: Sigkill

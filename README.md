@@ -354,6 +354,27 @@ Use these controls as complementary layers, not substitutes:
 - **Dependabot**: patch cadence accelerator for known vulnerable dependencies and actions updates.
 - **Admission controls (PSA/ValidatingAdmissionPolicy)**: block unsafe manifests before scheduling.
 - **Signed deploy (OIDC + Cosign)**: verify provenance/integrity of digest-pinned images before deploy.
+- **Sigstore admission (policy-controller)**: enforce signature verification at cluster admission (opt-in namespaces), including direct `kubectl apply`.
 - **Runtime detection (Tetragon) + network visibility (Hubble/Cilium)**: detect post-start and post-exploit behavior.
 
 Dependabot alone is not a runtime control, and runtime detection alone is not a supply-chain gate.
+
+
+## Local security e2e
+
+Run the full local security validation chain in one command:
+
+```bash
+make security-e2e TENANT_ALLOW=alpha TENANT_DENY=beta
+```
+
+This command runs:
+
+- base deploy (`k8s/overlays/kind`)
+- Sigstore policy-controller install + ClusterImagePolicy apply
+- tenant create/apply for allow+deny tenants
+- tenant smoke
+- Hubble flow checks (including cross-tenant deny)
+- Kafka cross-tenant authz deny check
+- Tetragon enforce deny check (shell + outbound)
+- admission negative tests

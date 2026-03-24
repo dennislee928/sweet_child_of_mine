@@ -3,10 +3,10 @@ SHELL := /bin/bash
 OVERLAY ?= k8s/overlays/kind
 PYTEST_VENV := .venv-test
 
-.PHONY: help test lint build kind-up deploy smoke tenant-create tenant-apply tenant-smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean
+.PHONY: help test lint build kind-up deploy smoke tenant-create tenant-apply tenant-smoke security-e2e hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean
 
 help:
-	@echo "Targets: test lint build kind-up deploy smoke tenant-create tenant-apply tenant-smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean"
+	@echo "Targets: test lint build kind-up deploy smoke tenant-create tenant-apply tenant-smoke security-e2e hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean"
 
 test:
 	python3 -m venv $(PYTEST_VENV)
@@ -71,3 +71,21 @@ tenant-apply: tenant-create
 
 tenant-smoke: tenant-apply
 	TENANT=$(TENANT) bash scripts/smoke.sh
+
+TENANT_ALLOW ?= alpha
+TENANT_DENY ?= beta
+
+security-e2e:
+	OVERLAY=k8s/overlays/kind bash scripts/deploy.sh
+	bash scripts/install-sigstore-policy-controller.sh
+	bash scripts/apply-sigstore-policy.sh
+	TENANT=$(TENANT_ALLOW) bash scripts/tenant-create.sh
+	TENANT=$(TENANT_DENY) bash scripts/tenant-create.sh
+	kubectl apply -f k8s/tenants/$(TENANT_ALLOW)/rendered.yaml
+	kubectl apply -f k8s/tenants/$(TENANT_DENY)/rendered.yaml
+	TENANT=$(TENANT_ALLOW) bash scripts/smoke.sh
+	TENANT_ALLOW=$(TENANT_ALLOW) TENANT_DENY=$(TENANT_DENY) bash scripts/hubble-check.sh
+	TENANT_ALLOW=$(TENANT_ALLOW) TENANT_DENY=$(TENANT_DENY) bash scripts/kafka-cross-tenant-deny.sh
+	TETRAGON_TEST_NS=tenant-$(TENANT_ALLOW) TETRAGON_TEST_SELECTOR=app=exchange-simulator-$(TENANT_ALLOW) bash scripts/tetragon-enforce-check.sh
+	bash scripts/admission-negative-tests-local.sh
+	@echo "security-e2e PASS"

@@ -168,6 +168,12 @@ jobs:
         uses: helm/kind-action@v1.10.0
         with:
           cluster_name: exchange-honeynet
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Install Sigstore policy-controller
+        run: |
+          bash scripts/install-sigstore-policy-controller.sh
+          bash scripts/apply-sigstore-policy.sh
       - name: Deploy base and tenant rendered
         run: |
           kustomize build k8s/overlays/kind > /tmp/rendered-kind.yaml
@@ -199,6 +205,10 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           TENANT_ALLOW=alpha TENANT_DENY=beta bash scripts/kafka-cross-tenant-deny.sh
+      - name: Tetragon enforce deny check
+        run: |
+          TETRAGON_TEST_NS=tenant-alpha TETRAGON_TEST_SELECTOR=app=exchange-simulator-alpha \
+            bash scripts/tetragon-enforce-check.sh
 
       - name: Collect tenant diagnostics on failure
         if: failure()
@@ -230,6 +240,12 @@ jobs:
           cluster_name: exchange-honeynet
       - name: Setup kustomize
         uses: imranismail/setup-kustomize@v2
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Install Sigstore policy-controller
+        run: |
+          bash scripts/install-sigstore-policy-controller.sh
+          bash scripts/apply-sigstore-policy.sh
       - name: Apply base manifests with admission policies
         run: |
           kustomize build k8s/overlays/kind > /tmp/rendered-kind.yaml
@@ -242,7 +258,8 @@ jobs:
             tests/policy/deny-latest.yaml \
             tests/policy/deny-no-limits.yaml \
             tests/policy/deny-no-readonly-rootfs.yaml \
-            tests/policy/deny-allow-priv-esc.yaml; do
+            tests/policy/deny-allow-priv-esc.yaml \
+            tests/policy/deny-unsigned-image.yaml; do
             echo "Expect deny: ${f}"
             if kubectl apply --dry-run=server -f "${f}"; then
               echo "ERROR: ${f} was not denied" >&2

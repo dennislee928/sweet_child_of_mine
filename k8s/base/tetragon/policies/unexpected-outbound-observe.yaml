@@ -1,7 +1,7 @@
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
-  name: unexpected-outbound-observe
+  name: unexpected-outbound-enforce
 spec:
   tracepoints:
     - subsystem: "sock"
@@ -10,3 +10,5 @@ spec:
         - matchNamespaces:
             - operator: In
               values: ["tenant-alpha", "telemetry"]
+          matchActions:
+            - action: Sigkill

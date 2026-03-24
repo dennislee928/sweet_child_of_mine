@@ -10,6 +10,9 @@
 - Do not hand-edit `rendered.yaml` files.
 - Generate with `make tenant-create TENANT=<name>`.
 - `rendered.yaml` is treated as build/deploy artifact; default git ignore is enabled.
+- Keep generated files out of source review noise:
+  - Python bytecode/cache files (`__pycache__/`, `*.pyc`) must stay untracked.
+  - Prefer temporary output (`/tmp`) or CI artifacts for one-off rendered files.
 - If a sample rendered file is needed for docs/tests, keep it in a dedicated fixture path and mark clearly as fixture.
 
 ## CI implication
