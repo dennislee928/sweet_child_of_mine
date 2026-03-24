@@ -130,6 +130,7 @@ jobs:
           if [[ -n "${relay_pod}" ]]; then
             kubectl -n kube-system logs "${relay_pod}" --tail=400 > /tmp/diag/hubble-relay.log || true
           fi
+          bash scripts/ci-artifact-summary.sh /tmp/diag || true
       - name: Upload diagnostics artifact
         if: failure()
         uses: actions/upload-artifact@v4
