@@ -32,7 +32,7 @@ jobs:
           docker build -t local/eve-forwarder:ci apps/eve-forwarder
           docker build -t local/indexer-worker:ci apps/indexer-worker
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: local/exchange-simulator:ci
           format: table
@@ -53,13 +53,47 @@ jobs:
           kustomize build k8s/overlays/dev > /tmp/rendered-dev.yaml
           kustomize build k8s/overlays/prod > /tmp/rendered-prod.yaml
       - name: Trivy config scan (rendered)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: config
           scan-ref: /tmp/rendered-kind.yaml
           format: table
           exit-code: '1'
           severity: 'CRITICAL,HIGH,MEDIUM'
+      - name: Build policy snapshots
+        run: |
+          mkdir -p /tmp/policy-snapshots
+          awk '
+            BEGIN {out=0}
+            /^apiVersion:/ {
+              if ($0 ~ /networking.k8s.io\/v1|cilium.io\/v2/) {out=1} else {out=0}
+            }
+            out {print}
+          ' /tmp/rendered-kind.yaml > /tmp/policy-snapshots/kind-policies.yaml
+          awk '
+            BEGIN {out=0}
+            /^apiVersion:/ {
+              if ($0 ~ /networking.k8s.io\/v1|cilium.io\/v2/) {out=1} else {out=0}
+            }
+            out {print}
+          ' /tmp/rendered-dev.yaml > /tmp/policy-snapshots/dev-policies.yaml
+          awk '
+            BEGIN {out=0}
+            /^apiVersion:/ {
+              if ($0 ~ /networking.k8s.io\/v1|cilium.io\/v2/) {out=1} else {out=0}
+            }
+            out {print}
+          ' /tmp/rendered-prod.yaml > /tmp/policy-snapshots/prod-policies.yaml
+      - name: Upload rendered manifests and policy snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifests-and-policies
+          path: |
+            /tmp/rendered-kind.yaml
+            /tmp/rendered-dev.yaml
+            /tmp/rendered-prod.yaml
+            /tmp/policy-snapshots/*.yaml
+          if-no-files-found: error
 
   integration-smoke:
     runs-on: ubuntu-latest
@@ -72,14 +106,34 @@ jobs:
           cluster_name: exchange-honeynet
       - name: Setup kustomize
         uses: imranismail/setup-kustomize@v2
-      - name: Run smoke script (best-effort in CI)
+      - name: Run smoke script
         env:
           OVERLAY: k8s/overlays/kind
           CREATE_KIND: "false"
+        run: bash scripts/smoke.sh
+      - name: Collect Cilium and Hubble diagnostics on failure
+        if: failure()
         run: |
-          bash scripts/smoke.sh || {
-            echo "Smoke failed; collecting diagnostics"
-            kubectl get pods -A || true
-            kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 200 || true
-            exit 1
-          }
+          mkdir -p /tmp/diag
+          kubectl get pods -A > /tmp/diag/pods-all.txt || true
+          kubectl get events -A --sort-by=.metadata.creationTimestamp > /tmp/diag/events-all.txt || true
+          kubectl get ciliumnetworkpolicies -A -o yaml > /tmp/diag/cilium-network-policies.yaml || true
+          kubectl get networkpolicies -A -o yaml > /tmp/diag/network-policies.yaml || true
+          kubectl -n telemetry get all > /tmp/diag/telemetry-all.txt || true
+          cilium_pod="$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+          relay_pod="$(kubectl -n kube-system get pods -l k8s-app=hubble-relay -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+          if [[ -n "${cilium_pod}" ]]; then
+            kubectl -n kube-system logs "${cilium_pod}" --tail=400 > /tmp/diag/cilium.log || true
+            kubectl -n kube-system exec "${cilium_pod}" -- cilium status > /tmp/diag/cilium-status.txt || true
+            kubectl -n kube-system exec "${cilium_pod}" -- cilium endpoint list > /tmp/diag/cilium-endpoints.txt || true
+          fi
+          if [[ -n "${relay_pod}" ]]; then
+            kubectl -n kube-system logs "${relay_pod}" --tail=400 > /tmp/diag/hubble-relay.log || true
+          fi
+      - name: Upload diagnostics artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure-diagnostics
+          path: /tmp/diag
+          if-no-files-found: warn

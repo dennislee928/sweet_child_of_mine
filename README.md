@@ -278,6 +278,10 @@ This repo now includes the Phase 2 operational baseline:
 - Quick flow command helper: [`scripts/hubble-check.sh`](scripts/hubble-check.sh)
 - Make target: `make hubble-check`
 - Dependabot automation: [`.github/dependabot.yml`](.github/dependabot.yml)
+- CI rendered policy snapshot artifact:
+  - `rendered-manifests-and-policies` (full rendered overlays + extracted policy snapshots)
+- CI smoke-failure diagnostics artifact:
+  - `smoke-failure-diagnostics` (pods/events/policies + Cilium/Hubble logs and status when smoke fails)
 
 Recommended sequence:
 
