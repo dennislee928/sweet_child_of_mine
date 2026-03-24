@@ -50,6 +50,9 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: suricata
           image: jasonish/suricata:8.0.3
@@ -73,6 +76,12 @@ spec:
         - name: eve-forwarder
           image: ghcr.io/example/eve-forwarder:dev
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: EVE_FILE
               value: /var/log/suricata/eve.json
@@ -99,6 +108,8 @@ spec:
             - name: kafka-cluster-ca
               mountPath: /etc/kafka
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: suricata-config
           configMap:
@@ -110,4 +121,6 @@ spec:
           secret:
             secretName: exchange-kafka-cluster-ca-cert
         - name: suricata-logs
+          emptyDir: {}
+        - name: tmp
           emptyDir: {}

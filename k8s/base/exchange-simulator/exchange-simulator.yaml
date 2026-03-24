@@ -28,10 +28,19 @@ spec:
       labels:
         app: exchange-simulator
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: exchange-simulator
           image: ghcr.io/example/exchange-simulator:dev
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: exchange-simulator-config
@@ -53,6 +62,8 @@ spec:
             - name: kafka-cluster-ca
               mountPath: /etc/kafka
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           ports:
             - name: http
               containerPort: 8080
@@ -81,6 +92,8 @@ spec:
         - name: kafka-cluster-ca
           secret:
             secretName: exchange-kafka-cluster-ca-cert
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

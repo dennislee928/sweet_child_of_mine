@@ -255,6 +255,21 @@ This repo treats **Wazuh as an optional external security plane**. A full Wazuh 
 - extend Suricata / app detections beyond the starter rules (CI validates rules via `.github/workflows/suricata-rules.yml`)
 - tighten egress further (default deny per namespace) once all allowlists are proven in your environment
 
+## Phase 1 security baseline
+
+Current baseline applied in manifests:
+
+- Namespace Pod Security Admission labels:
+  - `exchange-sim` and `security`: `enforce/audit/warn=restricted`
+  - `telemetry`: `enforce=baseline`, `audit/warn=restricted` (keeps current Suricata/OpenSearch lab setup running while showing restricted-policy drift)
+- App workloads (`exchange-simulator`, `indexer-worker`, `eve-forwarder`, `opensearch-dashboards`) include:
+  - `runAsNonRoot: true`
+  - `readOnlyRootFilesystem: true`
+  - `allowPrivilegeEscalation: false`
+  - `capabilities.drop: ["ALL"]`
+  - `seccompProfile: RuntimeDefault`
+  - writable `/tmp` via `emptyDir`
+
 ## License
 
 MIT

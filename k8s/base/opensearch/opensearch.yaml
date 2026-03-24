@@ -132,9 +132,18 @@ spec:
       labels:
         app: opensearch-dashboards
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: dashboards
           image: opensearchproject/opensearch-dashboards:3.5.0
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 5601
               name: http
@@ -150,6 +159,12 @@ spec:
                   key: OPENSEARCH_INITIAL_ADMIN_PASSWORD
             - name: OPENSEARCH_SSL_VERIFICATIONMODE
               value: none
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -179,10 +194,19 @@ spec:
       labels:
         app: indexer-worker
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: indexer-worker
           image: ghcr.io/example/indexer-worker:dev
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: exchange-kafka-kafka-bootstrap.telemetry.svc.cluster.local:9093
@@ -218,7 +242,11 @@ spec:
             - name: kafka-cluster-ca
               mountPath: /etc/kafka
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: kafka-cluster-ca
           secret:
             secretName: exchange-kafka-cluster-ca-cert
+        - name: tmp
+          emptyDir: {}
