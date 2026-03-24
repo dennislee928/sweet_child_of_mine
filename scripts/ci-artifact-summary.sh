@@ -43,6 +43,22 @@ mkdir -p "${OUT_DIR}"
   fi
   echo
 
+  echo "## Top CrashLoopBackOff pods"
+  crash_lines=""
+  if command -v kubectl >/dev/null 2>&1; then
+    crash_lines="$(
+      kubectl get pods -A --no-headers 2>/dev/null \
+        | awk '$4=="CrashLoopBackOff" {printf "- %s/%s status=%s ready=%s restarts=%s\n", $1, $2, $4, $3, $5}' \
+        | head -n 20
+    )" || true
+  fi
+  if [[ -n "${crash_lines}" ]]; then
+    echo "${crash_lines}"
+  else
+    echo "- No CrashLoopBackOff pods detected."
+  fi
+  echo
+
   echo "## Recent drop events"
   drop_lines=""
   if command -v hubble >/dev/null 2>&1; then
