@@ -4,22 +4,61 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
     open-pull-requests-limit: 10
 
   - package-ecosystem: "pip"
     directory: "/apps/exchange-simulator"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"
     open-pull-requests-limit: 10
 
   - package-ecosystem: "pip"
     directory: "/apps/eve-forwarder"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"
     open-pull-requests-limit: 10
 
   - package-ecosystem: "pip"
     directory: "/apps/indexer-worker"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/exchange-simulator"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/eve-forwarder"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/indexer-worker"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
     open-pull-requests-limit: 10

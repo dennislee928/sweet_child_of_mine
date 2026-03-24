@@ -1,0 +1,67 @@
+name: Sign Images
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  build-scan-sign:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - exchange-simulator
+          - eve-forwarder
+          - indexer-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image name
+        run: echo "IMAGE=ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        run: |
+          docker build -t "$IMAGE" "apps/${{ matrix.app }}"
+          docker push "$IMAGE"
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign image (keyless)
+        run: cosign sign --yes "$IMAGE"
+
+      - name: Verify signature
+        run: |
+          cosign verify "$IMAGE" \
+            --certificate-identity-regexp "https://github.com/.+" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" > /tmp/cosign-verify-${{ matrix.app }}.json
+
+      - name: Upload verify output
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosign-verify-${{ matrix.app }}
+          path: /tmp/cosign-verify-${{ matrix.app }}.json
+          if-no-files-found: error

@@ -9,6 +9,7 @@ resources:
   - exchange-simulator/exchange-simulator.yaml
   - suricata/suricata.yaml
   - network-policies/cilium-policies.yaml
+  - admission/validating-policies.yaml
 
 configMapGenerator:
   - name: suricata-rules

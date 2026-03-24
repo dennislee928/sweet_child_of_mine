@@ -32,7 +32,7 @@ jobs:
           docker build -t local/eve-forwarder:ci apps/eve-forwarder
           docker build -t local/indexer-worker:ci apps/indexer-worker
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: local/exchange-simulator:ci
           format: table
@@ -53,7 +53,7 @@ jobs:
           kustomize build k8s/overlays/dev > /tmp/rendered-dev.yaml
           kustomize build k8s/overlays/prod > /tmp/rendered-prod.yaml
       - name: Trivy config scan (rendered)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: config
           scan-ref: /tmp/rendered-kind.yaml
@@ -130,6 +130,7 @@ jobs:
           if [[ -n "${relay_pod}" ]]; then
             kubectl -n kube-system logs "${relay_pod}" --tail=400 > /tmp/diag/hubble-relay.log || true
           fi
+          bash scripts/hubble-check.sh > /tmp/diag/hubble-check.txt 2>&1 || true
           bash scripts/ci-artifact-summary.sh /tmp/diag || true
       - name: Upload diagnostics artifact
         if: failure()

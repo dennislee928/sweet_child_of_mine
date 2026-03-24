@@ -1,0 +1,26 @@
+{
+  "index_patterns": [
+    "market-events-*",
+    "simulator-audit-*",
+    "suricata-eve-*"
+  ],
+  "template": {
+    "settings": {
+      "index.lifecycle.name": "exchange-honeynet-hot-delete-7d",
+      "index.lifecycle.rollover_alias": "exchange-honeynet-events",
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic": true,
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "timestamp": { "type": "date", "ignore_malformed": true },
+        "source": { "type": "keyword" },
+        "symbol": { "type": "keyword" },
+        "event_type": { "type": "keyword" }
+      }
+    }
+  },
+  "priority": 200
+}

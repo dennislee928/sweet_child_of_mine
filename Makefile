@@ -3,10 +3,10 @@ SHELL := /bin/bash
 OVERLAY ?= k8s/overlays/kind
 PYTEST_VENV := .venv-test
 
-.PHONY: help test lint build kind-up deploy smoke hubble-check pre-commit yaml-lint clean
+.PHONY: help test lint build kind-up deploy smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean
 
 help:
-	@echo "Targets: test lint build kind-up deploy smoke hubble-check pre-commit yaml-lint clean"
+	@echo "Targets: test lint build kind-up deploy smoke hubble-enable hubble-status flow-observe hubble-check pre-commit yaml-lint clean"
 
 test:
 	python3 -m venv $(PYTEST_VENV)
@@ -28,6 +28,20 @@ deploy:
 
 smoke:
 	OVERLAY=$(OVERLAY) bash scripts/smoke.sh
+
+hubble-enable:
+	cilium hubble enable
+	cilium status --wait
+
+hubble-status:
+	cilium status
+	hubble status
+
+flow-observe:
+	hubble observe --from-pod telemetry/exchange-simulator --to-namespace telemetry --protocol tcp --port 9093 --last 20 || true
+	hubble observe --from-pod telemetry/suricata --to-namespace telemetry --protocol tcp --port 9093 --last 20 || true
+	hubble observe --from-pod telemetry/indexer-worker --to-pod telemetry/opensearch --protocol tcp --port 9200 --last 20 || true
+	hubble observe --namespace telemetry --verdict DROPPED --last 20 || true
 
 hubble-check:
 	bash scripts/hubble-check.sh

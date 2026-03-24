@@ -36,7 +36,7 @@ spec:
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaUser
 metadata:
-  name: exchange-app
+  name: exchange-simulator-user
   namespace: telemetry
   labels:
     strimzi.io/cluster: exchange-kafka
@@ -46,14 +46,12 @@ spec:
   authorization:
     type: simple
     acls:
-      # Producers (simulator + eve-forwarder)
       - resource:
           type: topic
           name: market-events
           patternType: literal
         operations:
           - Write
-          - Create
           - Describe
       - resource:
           type: topic
@@ -61,17 +59,42 @@ spec:
           patternType: literal
         operations:
           - Write
-          - Create
           - Describe
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: eve-forwarder-user
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
       - resource:
           type: topic
           name: suricata-eve
           patternType: literal
         operations:
           - Write
-          - Create
           - Describe
-      # Consumer (indexer-worker)
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: indexer-worker-user
+  namespace: telemetry
+  labels:
+    strimzi.io/cluster: exchange-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
       - resource:
           type: topic
           name: market-events

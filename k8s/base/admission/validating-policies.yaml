@@ -1,0 +1,37 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload-security-baseline
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: "object.spec.containers.all(c, !c.image.endsWith(':latest'))"
+      message: "Container image tag ':latest' is not allowed."
+    - expression: "!has(object.spec.initContainers) || object.spec.initContainers.all(c, !c.image.endsWith(':latest'))"
+      message: "Init container image tag ':latest' is not allowed."
+    - expression: "(has(object.metadata.labels['security.exception/allow-privileged']) && object.metadata.labels['security.exception/allow-privileged'] == 'true') || object.spec.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || c.securityContext.privileged == false)"
+      message: "Privileged containers are not allowed without explicit exception label security.exception/allow-privileged=true."
+    - expression: "object.spec.containers.all(c, has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu) && has(c.resources.requests.memory) && has(c.resources.limits) && has(c.resources.limits.cpu) && has(c.resources.limits.memory))"
+      message: "Each container must define resources.requests/limits for cpu and memory."
+    - expression: "object.spec.containers.all(c, has(c.securityContext) && has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem == true)"
+      message: "Each container must set securityContext.readOnlyRootFilesystem=true."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: workload-security-baseline-binding
+spec:
+  policyName: workload-security-baseline
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: pod-security.kubernetes.io/enforce
+          operator: In
+          values: ["restricted"]

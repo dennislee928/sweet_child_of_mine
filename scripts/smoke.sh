@@ -82,8 +82,10 @@ printf '8=FIX.4.4|35=A|49=SMOKE|56=SIMEX|34=1|52=20260324-09:30:00.000|98=0|108=
 
 sleep 8
 
-echo "[smoke] verify KafkaUser exists"
-kubectl -n telemetry get secret exchange-app >/dev/null
+echo "[smoke] verify KafkaUser secrets exist"
+kubectl -n telemetry get secret exchange-simulator-user >/dev/null
+kubectl -n telemetry get secret eve-forwarder-user >/dev/null
+kubectl -n telemetry get secret indexer-worker-user >/dev/null
 
 echo "[smoke] verify OpenSearch indexed docs"
 if ! kubectl -n telemetry exec deploy/indexer-worker -- python - <<'PY'

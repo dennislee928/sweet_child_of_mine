@@ -47,6 +47,7 @@ spec:
     metadata:
       labels:
         app: suricata
+        security.exception/allow-privileged: "true"
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
@@ -94,11 +95,11 @@ spec:
             - name: KAFKA_SASL_MECHANISM
               value: SCRAM-SHA-512
             - name: KAFKA_SASL_USERNAME
-              value: exchange-app
+              value: eve-forwarder-user
             - name: KAFKA_SASL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: exchange-app
+                  name: eve-forwarder-user
                   key: password
             - name: KAFKA_SSL_CA_LOCATION
               value: /etc/kafka/ca.crt

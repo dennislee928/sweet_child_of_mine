@@ -278,6 +278,11 @@ This repo now includes the Phase 2 operational baseline:
 - Quick flow command helper: [`scripts/hubble-check.sh`](scripts/hubble-check.sh)
 - Make target: `make hubble-check`
 - Dependabot automation: [`.github/dependabot.yml`](.github/dependabot.yml)
+- Supply-chain signing workflow: [`.github/workflows/sign-images.yml`](.github/workflows/sign-images.yml)
+- OpenSearch governance assets:
+  - index template: [`k8s/base/opensearch/templates/index-template.json`](k8s/base/opensearch/templates/index-template.json)
+  - ILM policy: [`k8s/base/opensearch/templates/ilm-policy.json`](k8s/base/opensearch/templates/ilm-policy.json)
+  - bootstrap script: [`scripts/opensearch-bootstrap.sh`](scripts/opensearch-bootstrap.sh)
 - CI rendered policy snapshot artifact:
   - `rendered-manifests-and-policies` (full rendered overlays + extracted policy snapshots)
 - CI smoke-failure diagnostics artifact:
@@ -290,6 +295,28 @@ Recommended sequence:
 make smoke OVERLAY=k8s/overlays/kind
 make hubble-check
 ```
+
+Cosign verify example (after image is signed in CI):
+
+```bash
+cosign verify ghcr.io/<org>/exchange-simulator:<sha> \
+  --certificate-identity-regexp "https://github.com/.+" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+```
+
+OpenSearch template/ILM bootstrap example:
+
+```bash
+OPENSEARCH_URL=https://127.0.0.1:9200 \
+OPENSEARCH_USER=admin \
+OPENSEARCH_PASSWORD='<password>' \
+bash scripts/opensearch-bootstrap.sh
+```
+
+## P2 advanced controls
+
+- Wazuh central go/no-go checklist and rollout gates: [`docs/p2-advanced-controls.md`](docs/p2-advanced-controls.md)
+- Tenant isolation starter overlay: [`k8s/overlays/tenant-template/kustomization.yaml`](k8s/overlays/tenant-template/kustomization.yaml)
 
 ## License
 

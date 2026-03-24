@@ -1,70 +1,57 @@
 # Hubble Flow Debug Guide
 
-This guide covers a practical Phase 2 workflow for validating Cilium policy behavior with Hubble.
+This guide provides a repeatable runtime validation flow for Cilium + Hubble.
 
 ## Prerequisites
 
 - Cilium installed as CNI
 - Hubble Relay enabled
 - `cilium` CLI and `hubble` CLI available locally
+- target workloads deployed in namespace `telemetry`
 
-## Enable Hubble
+## Repeatable commands
 
-If Hubble is not enabled yet:
-
-```bash
-cilium hubble enable
-cilium status --wait
-```
-
-For local access to Relay/UI:
+### Enable Hubble
 
 ```bash
-cilium hubble port-forward &
-cilium hubble ui &
+make hubble-enable
 ```
 
-## Health checks
+### Check health
 
 ```bash
-cilium status
-hubble status
+make hubble-status
 ```
 
-## Core flow queries
-
-### 1) exchange-simulator -> Kafka
+### Observe core flows
 
 ```bash
-hubble observe --from-pod telemetry/exchange-simulator --to-namespace telemetry --protocol tcp --port 9093
+make flow-observe
 ```
 
-### 2) eve-forwarder -> Kafka
+### Enforced pass/fail verification
 
 ```bash
-hubble observe --from-pod telemetry/suricata --to-namespace telemetry --protocol tcp --port 9093
+make hubble-check
 ```
 
-### 3) indexer-worker -> OpenSearch
+The command returns non-zero if any required flow is missing.
 
-```bash
-hubble observe --from-pod telemetry/indexer-worker --to-pod telemetry/opensearch --protocol tcp --port 9200
-```
+## Expected acceptance criteria
 
-### 4) default-deny verification
+- exchange-simulator -> kafka (`tcp/9093`) is visible
+- eve-forwarder/suricata -> kafka (`tcp/9093`) is visible
+- indexer-worker -> opensearch (`tcp/9200`) is visible
+- dropped flow records (`verdict DROPPED`) are visible
 
-```bash
-hubble observe --verdict DROPPED --namespace telemetry
-```
+## Troubleshooting
 
-## Suggested troubleshooting sequence
-
-1. Confirm target pods are Ready.
-2. Run the three allow-path queries above and verify `FORWARDED` verdicts.
-3. Run the dropped-flow query and confirm expected denies only.
-4. If traffic is missing, check policy selectors and namespace labels first.
+1. Run `make smoke OVERLAY=k8s/overlays/kind` to generate traffic.
+2. Confirm pods are Ready in `telemetry`.
+3. Check Cilium/Hubble status again.
+4. Verify network policy selectors and namespace labels.
 
 ## Notes
 
-- Suricata runs with `hostNetwork: true`, so some flows may appear with host context.
-- For repeatable checks, run these commands while `scripts/smoke.sh` is generating traffic.
+- Suricata uses `hostNetwork: true`, so some records may appear from host context.
+- If the cluster has low traffic, run smoke first to avoid empty flow windows.

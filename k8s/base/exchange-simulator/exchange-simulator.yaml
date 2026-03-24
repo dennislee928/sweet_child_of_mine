@@ -50,11 +50,11 @@ spec:
             - name: KAFKA_SASL_MECHANISM
               value: SCRAM-SHA-512
             - name: KAFKA_SASL_USERNAME
-              value: exchange-app
+              value: exchange-simulator-user
             - name: KAFKA_SASL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: exchange-app
+                  name: exchange-simulator-user
                   key: password
             - name: KAFKA_SSL_CA_LOCATION
               value: /etc/kafka/ca.crt
