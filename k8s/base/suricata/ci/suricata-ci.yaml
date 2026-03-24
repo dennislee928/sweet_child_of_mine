@@ -1,0 +1,21 @@
+# Minimal Suricata config for CI: `suricata -T` rule syntax validation only.
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]"
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: /tmp/eve-ci.json
+      types:
+        - alert
+default-rule-path: /rules
+rule-files:
+  - local.rules
+af-packet:
+  - interface: lo
+    cluster-id: 98
+    cluster-type: cluster_flow
+    defrag: yes

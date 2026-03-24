@@ -41,8 +41,8 @@ apps/
 k8s/base/
   namespaces/            namespaces
   kafka/                 Strimzi Kafka CRs, topics, users
-  exchange-simulator/    deployment + service
-  suricata/              daemonset + rules + sidecar
+  exchange-simulator/    deployment + service (namespace `telemetry`, shares Kafka secrets)
+  suricata/              daemonset + rules + sidecar (namespace `telemetry`)
   opensearch/            single-node dev deployment + dashboards
   network-policies/      Cilium policy examples
 integrations/
@@ -76,13 +76,18 @@ docker push $REGISTRY/eve-forwarder:$TAG
 docker push $REGISTRY/indexer-worker:$TAG
 ```
 
-### 3. Patch image references
+### 3. Point manifests at your registry
 
-Search/replace these placeholders in the manifests:
+Manifests are built with **Kustomize**. Edit [`k8s/overlays/my-registry/kustomization.yaml`](k8s/overlays/my-registry/kustomization.yaml) and set each image `newName` / `newTag` (or a digest as `newTag`) to your registry. Alternatively:
 
-- `ghcr.io/example/exchange-simulator:dev`
-- `ghcr.io/example/eve-forwarder:dev`
-- `ghcr.io/example/indexer-worker:dev`
+```bash
+cd k8s/overlays/my-registry
+kustomize edit set image ghcr.io/example/exchange-simulator=ghcr.io/YOUR_ORG/exchange-simulator:dev
+kustomize edit set image ghcr.io/example/eve-forwarder=ghcr.io/YOUR_ORG/eve-forwarder:dev
+kustomize edit set image ghcr.io/example/indexer-worker=ghcr.io/YOUR_ORG/indexer-worker:dev
+```
+
+Use `OVERLAY=k8s/base` to apply the base only (same placeholder images).
 
 ### 4. Deploy
 
@@ -93,7 +98,7 @@ bash scripts/deploy.sh
 ### 5. Seed test traffic
 
 ```bash
-kubectl -n exchange-sim port-forward svc/exchange-simulator 8080:8080
+kubectl -n telemetry port-forward svc/exchange-simulator 8080:8080
 curl -X POST http://127.0.0.1:8080/api/v1/orders \
   -H 'content-type: application/json' \
   -d '{"symbol":"BTC-USD","side":"buy","price":62500.5,"quantity":0.2,"account_id":"ACCT-ALPHA"}'
@@ -128,16 +133,16 @@ Then send a simple line-delimited pseudo-FIX message using `|` as a visual separ
 
 ## Wazuh note
 
-This repo treats **Wazuh as an optional external security plane**. A full Wazuh central deployment already includes a **Wazuh server, Wazuh indexer, and Wazuh dashboard**; if you also run OpenSearch for this lab, co-locating both full stacks in one tiny cluster adds unnecessary overlap. Use the provided Wazuh agent DaemonSet to forward host/workload telemetry to an external Wazuh manager.
+This repo treats **Wazuh as an optional external security plane**. A full Wazuh central deployment already includes a **Wazuh server, Wazuh indexer, and Wazuh dashboard**; if you also run OpenSearch for this lab, co-locating both full stacks in one tiny cluster adds unnecessary overlap. Use the provided Wazuh agent DaemonSet to forward host/workload telemetry to an external Wazuh manager. For when to add an in-cluster full Wazuh stack, see [docs/wazuh-central-decision.md](docs/wazuh-central-decision.md).
 
 ## Hardening path
 
 - replace single-node OpenSearch with a proper multi-node topology
 - use Gateway API instead of legacy Ingress where needed
-- pin TLS for Kafka, OpenSearch, Dashboards, and simulator ingress
+- add TLS for simulator / Dashboards **ingress** (in-cluster Kafka and OpenSearch already use TLS in base manifests)
 - add HPA / PDB / anti-affinity
-- push Suricata rules and app detections into a CI rule-test pipeline
-- add egress-deny by default and explicit allowlists with Cilium policies
+- extend Suricata / app detections beyond the starter rules (CI validates rules via `.github/workflows/suricata-rules.yml`)
+- tighten egress further (default deny per namespace) once all allowlists are proven in your environment
 
 ## License
 

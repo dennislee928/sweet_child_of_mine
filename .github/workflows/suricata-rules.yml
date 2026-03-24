@@ -1,0 +1,26 @@
+name: Suricata rules
+
+on:
+  push:
+    paths:
+      - "k8s/base/suricata/rules/**"
+      - "k8s/base/suricata/ci/**"
+      - ".github/workflows/suricata-rules.yml"
+  pull_request:
+    paths:
+      - "k8s/base/suricata/rules/**"
+      - "k8s/base/suricata/ci/**"
+      - ".github/workflows/suricata-rules.yml"
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate rules with suricata -T
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/k8s/base/suricata/ci/suricata-ci.yaml:/etc/suricata-ci.yaml:ro" \
+            -v "${{ github.workspace }}/k8s/base/suricata/rules:/rules:ro" \
+            jasonish/suricata:8.0.3 \
+            suricata -T -c /etc/suricata-ci.yaml

@@ -2,10 +2,10 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: exchange-simulator-config
-  namespace: exchange-sim
+  namespace: telemetry
 data:
   APP_NAME: exchange-simulator
-  KAFKA_BOOTSTRAP_SERVERS: exchange-kafka-kafka-bootstrap.telemetry.svc.cluster.local:9092
+  KAFKA_BOOTSTRAP_SERVERS: exchange-kafka-kafka-bootstrap.telemetry.svc.cluster.local:9093
   MARKET_EVENTS_TOPIC: market-events
   AUDIT_TOPIC: simulator-audit
   FIX_LISTEN_HOST: 0.0.0.0
@@ -17,7 +17,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: exchange-simulator
-  namespace: exchange-sim
+  namespace: telemetry
 spec:
   replicas: 2
   selector:
@@ -35,6 +35,24 @@ spec:
           envFrom:
             - configMapRef:
                 name: exchange-simulator-config
+          env:
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: SASL_SSL
+            - name: KAFKA_SASL_MECHANISM
+              value: SCRAM-SHA-512
+            - name: KAFKA_SASL_USERNAME
+              value: exchange-app
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: exchange-app
+                  key: password
+            - name: KAFKA_SSL_CA_LOCATION
+              value: /etc/kafka/ca.crt
+          volumeMounts:
+            - name: kafka-cluster-ca
+              mountPath: /etc/kafka
+              readOnly: true
           ports:
             - name: http
               containerPort: 8080
@@ -59,12 +77,16 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: kafka-cluster-ca
+          secret:
+            secretName: exchange-kafka-cluster-ca-cert
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: exchange-simulator
-  namespace: exchange-sim
+  namespace: telemetry
 spec:
   selector:
     app: exchange-simulator

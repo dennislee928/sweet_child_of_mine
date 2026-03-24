@@ -5,6 +5,7 @@ metadata:
   namespace: telemetry
 type: Opaque
 stringData:
+  # Replace before any non-lab deploy; used for admin user + Dashboards + indexer-worker.
   OPENSEARCH_INITIAL_ADMIN_PASSWORD: ChangeMe_Strong_123!
 ---
 apiVersion: v1
@@ -17,7 +18,19 @@ data:
     cluster.name: exchange-honeynet
     network.host: 0.0.0.0
     discovery.type: single-node
-    plugins.security.disabled: true
+    plugins.security.disabled: false
+    plugins.security.ssl.http.enabled: true
+    plugins.security.ssl.http.pemcert_filepath: certs/node.pem
+    plugins.security.ssl.http.pemkey_filepath: certs/node.key
+    plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
+    plugins.security.ssl.transport.enabled: true
+    plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
+    plugins.security.ssl.transport.pemkey_filepath: certs/node.key
+    plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
+    plugins.security.ssl.transport.enforce_hostname_verification: false
+    plugins.security.ssl.http.clientauth_mode: OPTIONAL
+    plugins.security.nodes_dn:
+      - "CN=opensearch.telemetry.svc.cluster.local"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -35,6 +48,23 @@ spec:
       labels:
         app: opensearch
     spec:
+      initContainers:
+        - name: gen-certs
+          image: alpine:3.19
+          command:
+            - sh
+            - -ec
+            - |
+              apk add --no-cache openssl
+              mkdir -p /out
+              openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+                -keyout /out/node.key -out /out/node.pem \
+                -subj "/CN=opensearch.telemetry.svc.cluster.local"
+              cp /out/node.pem /out/root-ca.pem
+              chown 1000:1000 /out/node.key /out/node.pem /out/root-ca.pem
+          volumeMounts:
+            - name: opensearch-certs
+              mountPath: /out
       containers:
         - name: opensearch
           image: opensearchproject/opensearch:3.5.0
@@ -46,16 +76,25 @@ spec:
           env:
             - name: OPENSEARCH_JAVA_OPTS
               value: -Xms1g -Xmx1g
+            - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-auth
+                  key: OPENSEARCH_INITIAL_ADMIN_PASSWORD
           volumeMounts:
             - name: data
               mountPath: /usr/share/opensearch/data
             - name: config
               mountPath: /usr/share/opensearch/config/opensearch.yml
               subPath: opensearch.yml
+            - name: opensearch-certs
+              mountPath: /usr/share/opensearch/config/certs
       volumes:
         - name: config
           configMap:
             name: opensearch-config
+        - name: opensearch-certs
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -74,7 +113,7 @@ spec:
   selector:
     app: opensearch
   ports:
-    - name: http
+    - name: https
       port: 9200
       targetPort: 9200
 ---
@@ -101,7 +140,16 @@ spec:
               name: http
           env:
             - name: OPENSEARCH_HOSTS
-              value: '["http://opensearch.telemetry.svc.cluster.local:9200"]'
+              value: '["https://opensearch.telemetry.svc.cluster.local:9200"]'
+            - name: OPENSEARCH_USERNAME
+              value: admin
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-auth
+                  key: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+            - name: OPENSEARCH_SSL_VERIFICATIONMODE
+              value: none
 ---
 apiVersion: v1
 kind: Service
@@ -137,8 +185,40 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: exchange-kafka-kafka-bootstrap.telemetry.svc.cluster.local:9092
+              value: exchange-kafka-kafka-bootstrap.telemetry.svc.cluster.local:9093
             - name: KAFKA_TOPICS
               value: market-events,simulator-audit,suricata-eve
+            - name: KAFKA_GROUP_ID
+              value: indexer-worker
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: SASL_SSL
+            - name: KAFKA_SASL_MECHANISM
+              value: SCRAM-SHA-512
+            - name: KAFKA_SASL_USERNAME
+              value: exchange-app
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: exchange-app
+                  key: password
+            - name: KAFKA_SSL_CA_LOCATION
+              value: /etc/kafka/ca.crt
             - name: OPENSEARCH_URL
-              value: http://opensearch.telemetry.svc.cluster.local:9200
+              value: https://opensearch.telemetry.svc.cluster.local:9200
+            - name: OPENSEARCH_USER
+              value: admin
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-auth
+                  key: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+            - name: OPENSEARCH_SSL_VERIFY
+              value: "false"
+          volumeMounts:
+            - name: kafka-cluster-ca
+              mountPath: /etc/kafka
+              readOnly: true
+      volumes:
+        - name: kafka-cluster-ca
+          secret:
+            secretName: exchange-kafka-cluster-ca-cert

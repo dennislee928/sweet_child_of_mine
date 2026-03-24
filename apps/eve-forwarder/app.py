@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import ssl
 from pathlib import Path
+from typing import Any
 
 from aiokafka import AIOKafkaProducer
 
@@ -12,8 +14,24 @@ BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 TOPIC = os.getenv("KAFKA_TOPIC", "suricata-eve")
 
 
+def _producer_kwargs() -> dict[str, Any]:
+    proto = os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT").upper()
+    kwargs: dict[str, Any] = {
+        "bootstrap_servers": BOOTSTRAP,
+        "security_protocol": proto,
+    }
+    if proto in ("SASL_SSL", "SASL_PLAINTEXT"):
+        kwargs["sasl_mechanism"] = os.getenv("KAFKA_SASL_MECHANISM", "SCRAM-SHA-512")
+        kwargs["sasl_plain_username"] = os.getenv("KAFKA_SASL_USERNAME", "")
+        kwargs["sasl_plain_password"] = os.getenv("KAFKA_SASL_PASSWORD", "")
+    ca = os.getenv("KAFKA_SSL_CA_LOCATION", "").strip()
+    if proto == "SASL_SSL" and ca:
+        kwargs["ssl_context"] = ssl.create_default_context(cafile=ca)
+    return kwargs
+
+
 async def tail_and_forward() -> None:
-    producer = AIOKafkaProducer(bootstrap_servers=BOOTSTRAP)
+    producer = AIOKafkaProducer(**_producer_kwargs())
     await producer.start()
     try:
         path = Path(EVE_FILE)
