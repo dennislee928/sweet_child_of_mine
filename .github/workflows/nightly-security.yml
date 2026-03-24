@@ -1,0 +1,37 @@
+name: Nightly Security
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  trivy-k8s-nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: exchange-honeynet
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+      - name: Deploy baseline
+        run: |
+          kustomize build k8s/overlays/kind > /tmp/rendered-kind.yaml
+          kubectl apply -f /tmp/rendered-kind.yaml
+      - name: Install Trivy CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+      - name: Run Trivy k8s summary scan
+        run: |
+          mkdir -p /tmp/nightly
+          trivy k8s --report summary cluster > /tmp/nightly/trivy-k8s-summary.txt || true
+      - name: Upload nightly security artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-trivy-k8s-summary
+          path: /tmp/nightly
+          if-no-files-found: warn

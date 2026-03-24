@@ -130,6 +130,11 @@ jobs:
           if [[ -n "${relay_pod}" ]]; then
             kubectl -n kube-system logs "${relay_pod}" --tail=400 > /tmp/diag/hubble-relay.log || true
           fi
+          tetragon_pod="$(kubectl -n kube-system get pods -l app=tetragon -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+          if [[ -n "${tetragon_pod}" ]]; then
+            kubectl -n kube-system logs "${tetragon_pod}" --tail=400 > /tmp/diag/tetragon.log || true
+            kubectl -n kube-system get pods -l app=tetragon -o wide > /tmp/diag/tetragon-pods.txt || true
+          fi
           bash scripts/hubble-check.sh > /tmp/diag/hubble-check.txt 2>&1 || true
           bash scripts/ci-artifact-summary.sh /tmp/diag || true
       - name: Upload diagnostics artifact
@@ -150,6 +155,7 @@ jobs:
       - name: Generate tenant rendered manifest
         run: |
           make tenant-create TENANT=alpha
+          make tenant-create TENANT=beta
       - name: Trivy config scan (tenant rendered)
         uses: aquasecurity/trivy-action@v0.28.0
         with:
@@ -164,13 +170,35 @@ jobs:
           cluster_name: exchange-honeynet
       - name: Deploy base and tenant rendered
         run: |
+          kustomize build k8s/overlays/kind > /tmp/rendered-kind.yaml
+          kubectl apply -f /tmp/rendered-kind.yaml
           kubectl apply -f k8s/tenants/alpha/rendered.yaml
+          kubectl apply -f k8s/tenants/beta/rendered.yaml
+      - name: Install Kafka client for authz test
+        run: |
+          python3 -m pip install --user kafka-python
       - name: Tenant smoke and flow checks
         env:
           TENANT: alpha
+          TENANT_ALLOW: alpha
+          TENANT_DENY: beta
         run: |
           bash scripts/smoke.sh
           bash scripts/hubble-check.sh
+      - name: Install Cosign for verify gate
+        uses: sigstore/cosign-installer@v3.7.0
+      - name: Verify signed digest images (best effort)
+        run: |
+          mkdir -p /tmp/tenant-diag
+          if ! bash scripts/verify-deploy-images.sh k8s/tenants/alpha/rendered.yaml > /tmp/tenant-diag/cosign-verify.txt 2>&1; then
+            echo "signature verification failed" >&2
+            cat /tmp/tenant-diag/cosign-verify.txt || true
+            exit 1
+          fi
+      - name: Cross-tenant Kafka authz deny check
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          TENANT_ALLOW=alpha TENANT_DENY=beta bash scripts/kafka-cross-tenant-deny.sh
 
       - name: Collect tenant diagnostics on failure
         if: failure()
@@ -178,6 +206,10 @@ jobs:
           mkdir -p /tmp/tenant-diag
           kubectl get pods -A > /tmp/tenant-diag/pods-all.txt || true
           kubectl get events -A --sort-by=.metadata.creationTimestamp > /tmp/tenant-diag/events-all.txt || true
+          tetragon_pod="$(kubectl -n kube-system get pods -l app=tetragon -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+          if [[ -n "${tetragon_pod}" ]]; then
+            kubectl -n kube-system logs "${tetragon_pod}" --tail=400 > /tmp/tenant-diag/tetragon.log || true
+          fi
           bash scripts/ci-artifact-summary.sh /tmp/tenant-diag || true
       - name: Upload tenant diagnostics artifact
         if: failure()
@@ -186,3 +218,34 @@ jobs:
           name: tenant-validation-diagnostics
           path: /tmp/tenant-diag
           if-no-files-found: warn
+
+  admission-negative-tests:
+    runs-on: ubuntu-latest
+    needs: [manifest-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: exchange-honeynet
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+      - name: Apply base manifests with admission policies
+        run: |
+          kustomize build k8s/overlays/kind > /tmp/rendered-kind.yaml
+          kubectl apply -f /tmp/rendered-kind.yaml
+      - name: Verify deny manifests are blocked
+        run: |
+          set -euo pipefail
+          for f in \
+            tests/policy/deny-privileged.yaml \
+            tests/policy/deny-latest.yaml \
+            tests/policy/deny-no-limits.yaml \
+            tests/policy/deny-no-readonly-rootfs.yaml \
+            tests/policy/deny-allow-priv-esc.yaml; do
+            echo "Expect deny: ${f}"
+            if kubectl apply --dry-run=server -f "${f}"; then
+              echo "ERROR: ${f} was not denied" >&2
+              exit 1
+            fi
+          done

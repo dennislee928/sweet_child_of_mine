@@ -1,0 +1,16 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: suspicious-write-observe
+spec:
+  kprobes:
+    - call: "__x64_sys_openat"
+      syscall: true
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Prefix
+              values: ["/etc/", "/root/", "/var/run/secrets/"]
+          matchNamespaces:
+            - operator: In
+              values: ["tenant-alpha", "telemetry"]

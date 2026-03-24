@@ -10,6 +10,7 @@ resources:
   - suricata/suricata.yaml
   - network-policies/cilium-policies.yaml
   - admission/validating-policies.yaml
+  - tetragon/tetragon-install.yaml
 
 configMapGenerator:
   - name: suricata-rules

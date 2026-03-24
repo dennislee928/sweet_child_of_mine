@@ -11,6 +11,9 @@ require_cmd() {
 require_cmd cilium
 require_cmd hubble
 
+TENANT_ALLOW="${TENANT_ALLOW:-}"
+TENANT_DENY="${TENANT_DENY:-}"
+
 echo "== cilium status =="
 cilium status
 
@@ -39,6 +42,15 @@ check_flow "simulator -> kafka (9093)" --from-pod telemetry/exchange-simulator -
 check_flow "suricata/eve-forwarder -> kafka (9093)" --from-pod telemetry/suricata --to-namespace telemetry --protocol tcp --port 9093 || fail=1
 check_flow "indexer -> opensearch (9200)" --from-pod telemetry/indexer-worker --to-pod telemetry/opensearch --protocol tcp --port 9200 || fail=1
 check_flow "dropped flows in telemetry" --namespace telemetry --verdict DROPPED || fail=1
+
+if [[ -n "${TENANT_ALLOW}" && -n "${TENANT_DENY}" ]]; then
+  allow_slug="$(echo "${TENANT_ALLOW}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+  deny_slug="$(echo "${TENANT_DENY}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+  check_flow "cross-tenant deny tenant-${deny_slug} -> tenant-${allow_slug}" \
+    --from-namespace "tenant-${deny_slug}" \
+    --to-namespace "tenant-${allow_slug}" \
+    --verdict DROPPED || fail=1
+fi
 
 echo
 if [[ "${fail}" -eq 0 ]]; then

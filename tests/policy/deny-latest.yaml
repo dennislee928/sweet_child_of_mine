@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: deny-latest
+  namespace: exchange-sim
+spec:
+  containers:
+    - name: c
+      image: busybox:latest
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi

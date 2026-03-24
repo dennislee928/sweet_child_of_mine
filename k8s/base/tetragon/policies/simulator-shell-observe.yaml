@@ -1,0 +1,16 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: simulator-shell-observe
+spec:
+  kprobes:
+    - call: "__x64_sys_execve"
+      syscall: true
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Prefix
+              values: ["/bin/sh", "/bin/bash", "/usr/bin/sh", "/usr/bin/bash"]
+          matchNamespaces:
+            - operator: In
+              values: ["tenant-alpha", "telemetry"]

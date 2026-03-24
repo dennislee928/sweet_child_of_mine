@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tetragon
+  namespace: kube-system
+  labels:
+    app: tetragon
+spec:
+  selector:
+    matchLabels:
+      app: tetragon
+  template:
+    metadata:
+      labels:
+        app: tetragon
+    spec:
+      serviceAccountName: default
+      hostPID: true
+      hostNetwork: true
+      containers:
+        - name: tetragon
+          image: quay.io/cilium/tetragon:v1.2.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config-dir=/etc/tetragon/
+            - --enable-process-cred
+            - --export-filename=/var/log/tetragon/events.json
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: bpf
+              mountPath: /sys/fs/bpf
+            - name: logs
+              mountPath: /var/log/tetragon
+            - name: policies
+              mountPath: /etc/tetragon/tetragon.tp.d
+      volumes:
+        - name: bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: Directory
+        - name: logs
+          hostPath:
+            path: /var/log/tetragon
+            type: DirectoryOrCreate
+        - name: policies
+          configMap:
+            name: tetragon-policies
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tetragon-policies
+  namespace: kube-system
+data:
+  # ConfigMap references policy files mounted from k8s/base/tetragon/policies
+  README: "Observe-only policies for runtime detection baseline"

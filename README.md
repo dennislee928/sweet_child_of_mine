@@ -343,3 +343,17 @@ TENANT=alpha TENANT_ENV=prod SIM_IMAGE=ghcr.io/<org>/exchange-simulator@sha256:<
 ```
 
 Use [`.github/workflows/sign-images.yml`](.github/workflows/sign-images.yml) to build/scan/sign and obtain deployable signed digests.
+
+
+Rendered output policy: generated tenant outputs are artifacts (not source of truth). See [`docs/rendered-artifact-strategy.md`](docs/rendered-artifact-strategy.md).
+
+## Security responsibility boundaries
+
+Use these controls as complementary layers, not substitutes:
+
+- **Dependabot**: patch cadence accelerator for known vulnerable dependencies and actions updates.
+- **Admission controls (PSA/ValidatingAdmissionPolicy)**: block unsafe manifests before scheduling.
+- **Signed deploy (OIDC + Cosign)**: verify provenance/integrity of digest-pinned images before deploy.
+- **Runtime detection (Tetragon) + network visibility (Hubble/Cilium)**: detect post-start and post-exploit behavior.
+
+Dependabot alone is not a runtime control, and runtime detection alone is not a supply-chain gate.
