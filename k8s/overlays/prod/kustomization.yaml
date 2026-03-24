@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/example/exchange-simulator
+    newName: ghcr.io/example/exchange-simulator
+    digest: sha256:replace-with-digest
+  - name: ghcr.io/example/eve-forwarder
+    newName: ghcr.io/example/eve-forwarder
+    digest: sha256:replace-with-digest
+  - name: ghcr.io/example/indexer-worker
+    newName: ghcr.io/example/indexer-worker
+    digest: sha256:replace-with-digest
+
+patches:
+  - target:
+      kind: Deployment
+      name: exchange-simulator
+      namespace: telemetry
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 10
+  - target:
+      kind: Deployment
+      name: indexer-worker
+      namespace: telemetry
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 4
+  - target:
+      kind: Deployment
+      name: opensearch-dashboards
+      namespace: telemetry
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2

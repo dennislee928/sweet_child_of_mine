@@ -89,10 +89,32 @@ kustomize edit set image ghcr.io/example/indexer-worker=ghcr.io/YOUR_ORG/indexer
 
 Use `OVERLAY=k8s/base` to apply the base only (same placeholder images).
 
+Environment overlays now include:
+
+- `k8s/overlays/kind`
+- `k8s/overlays/dev`
+- `k8s/overlays/prod`
+
+Render checks:
+
+```bash
+kustomize build k8s/overlays/kind
+kustomize build k8s/overlays/dev
+kustomize build k8s/overlays/prod
+```
+
 ### 4. Deploy
 
 ```bash
 bash scripts/deploy.sh
+```
+
+Or choose an overlay:
+
+```bash
+OVERLAY=k8s/overlays/kind bash scripts/deploy.sh
+OVERLAY=k8s/overlays/dev bash scripts/deploy.sh
+OVERLAY=k8s/overlays/prod bash scripts/deploy.sh
 ```
 
 ### 5. Seed test traffic
@@ -121,6 +143,95 @@ Then send a simple line-delimited pseudo-FIX message using `|` as a visual separ
 ```text
 8=FIX.4.4|35=A|49=CLIENT01|56=SIMEX|34=1|52=20260324-09:30:00.000|98=0|108=30|
 ```
+
+## Massive deployment workflow
+
+For repeated large-scale rollout, use the built-in task targets:
+
+```bash
+make test
+make pre-commit
+make deploy OVERLAY=k8s/overlays/dev
+make smoke OVERLAY=k8s/overlays/dev
+```
+
+For kind-based integration:
+
+```bash
+make kind-up
+make deploy OVERLAY=k8s/overlays/kind
+make smoke OVERLAY=k8s/overlays/kind
+```
+
+## Massive deployment guide
+
+For large-scale honeypot deployment (many pods, many tenants/regions), use this baseline pattern:
+
+### 1) Namespace-per-tenant or namespace-per-region
+
+- Create one overlay per tenant/region (for example `k8s/overlays/tenant-a`, `k8s/overlays/apac`).
+- Keep shared stateful components in `telemetry` (Kafka / OpenSearch), and isolate simulator policy by namespace where possible.
+
+### 2) Scale simulator with Deployment replicas and HPA
+
+Use static replicas for predictable load, then add HPA for burst traffic:
+
+```bash
+kubectl -n telemetry scale deploy/exchange-simulator --replicas=50
+```
+
+Example HPA:
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: exchange-simulator
+  namespace: telemetry
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: exchange-simulator
+  minReplicas: 10
+  maxReplicas: 200
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+```
+
+### 3) Tune rolling updates for safe mass rollout
+
+For high replica counts, set conservative rollout windows:
+
+- `maxUnavailable: 5%`
+- `maxSurge: 10%`
+- monitor with `kubectl -n telemetry rollout status deploy/exchange-simulator`
+- rollback with `kubectl -n telemetry rollout undo deploy/exchange-simulator`
+
+### 4) Multi-tenant policy and traffic control
+
+- Keep default deny + explicit allowlists with Cilium.
+- Limit simulator egress to Kafka/DNS only.
+- Use per-tenant labels and separate `CiliumNetworkPolicy` objects.
+
+### 5) Capacity split: stateless vs stateful
+
+- `exchange-simulator`: stateless, horizontal scale (many replicas).
+- `suricata`: DaemonSet per node (not HPA-driven).
+- `kafka` and `opensearch`: stateful capacity planning first (CPU/memory/storage/IOPS), then replica tuning.
+
+### 6) Operations checklist before scaling to hundreds of pods
+
+- enable cluster-autoscaler on node groups
+- define `requests/limits` for every workload
+- add PodDisruptionBudget and anti-affinity for critical services
+- watch Kafka lag, OpenSearch indexing pressure, and Cilium flow drops
+- prefer image digest pinning for repeatable rollouts
 
 ## Threat emulation ideas
 
